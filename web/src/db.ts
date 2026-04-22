@@ -10,11 +10,10 @@ export async function getDB(
 ): Promise<duckdb.AsyncDuckDB> {
   if (_db) return _db
 
-  // jsdelivr에서 고정 버전으로 mvp 번들만 사용 (COEP 없이도 동작)
-  const JSDELIVR = `https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/dist/`
+  // 로컬 번들 사용 (cross-origin 문제 회피)
   const bundle = {
-    mainModule: JSDELIVR + 'duckdb-mvp.wasm',
-    mainWorker: JSDELIVR + 'duckdb-browser-mvp.worker.js',
+    mainModule: '/duckdb/duckdb-mvp.wasm',
+    mainWorker: '/duckdb/duckdb-browser-mvp.worker.js',
   }
 
   const worker = await duckdb.createWorker(bundle.mainWorker)

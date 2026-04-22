@@ -202,6 +202,60 @@ def export_batted_balls(con: duckdb.DuckDBPyConnection, s3) -> None:
     })
 
 
+# ── 4. 투수 리더보드 ─────────────────────────────────────────────
+def export_pitcher_leaderboard(con: duckdb.DuckDBPyConnection, s3) -> None:
+    dr = _date_range(con)
+
+    rows = con.execute("""
+        SELECT
+            pitcher,
+            ANY_VALUE(player_name) AS name_en,
+            ANY_VALUE(p_throws) AS throws,
+            COUNT(*) FILTER (WHERE events IS NOT NULL) AS bf,
+            COUNT(*) FILTER (WHERE events = 'strikeout') AS k,
+            COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) AS bb,
+            COUNT(*) FILTER (WHERE events = 'home_run') AS hr,
+            COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run')) AS hits,
+            ROUND(AVG(release_speed) FILTER (WHERE release_speed IS NOT NULL), 1) AS avg_velo,
+            ROUND(MAX(release_speed), 1) AS max_velo,
+            ROUND(AVG(release_spin_rate) FILTER (WHERE release_spin_rate IS NOT NULL), 0) AS avg_spin,
+            ROUND(
+                AVG(estimated_woba_using_speedangle)
+                FILTER (WHERE estimated_woba_using_speedangle IS NOT NULL), 3
+            ) AS xwoba_against,
+            COUNT(*) AS total_pitches,
+            COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked')) AS whiffs,
+            COUNT(*) FILTER (WHERE description LIKE '%swing%' OR description LIKE '%hit%') AS swings
+        FROM statcast_pitches
+        GROUP BY pitcher
+        HAVING COUNT(*) FILTER (WHERE events IS NOT NULL) >= 10
+        ORDER BY xwoba_against ASC NULLS LAST
+        LIMIT 200
+    """).fetchall()
+
+    cols = ["mlb_id", "name_en", "throws", "bf", "k", "bb", "hr", "hits",
+            "avg_velo", "max_velo", "avg_spin", "xwoba_against",
+            "total_pitches", "whiffs", "swings"]
+    pitchers = [dict(zip(cols, r)) for r in rows]
+
+    for p in pitchers:
+        p["k_pct"] = round(p["k"] / p["bf"], 3) if p["bf"] > 0 else None
+        p["bb_pct"] = round(p["bb"] / p["bf"], 3) if p["bf"] > 0 else None
+        p["whiff_pct"] = round(p["whiffs"] / p["swings"], 3) if p.get("swings", 0) > 0 else None
+        p["name_kr"] = ""
+
+    # 한국 투수 추가 (현재 없지만 구조 확보)
+    cw_rows = con.execute("SELECT mlb_id, name_en, name_kr FROM player_crosswalk").fetchall()
+    cw = {r[0]: r[2] for r in cw_rows}
+    for p in pitchers:
+        p["name_kr"] = cw.get(p["mlb_id"], "")
+
+    _upload_json(s3, "data/pitcher_leaderboard.json", {
+        "updated_at": str(date.today()), "date_range": dr,
+        "min_bf": 10, "pitchers": pitchers,
+    })
+
+
 # ── 메인 ────────────────────────────────────────────────────────
 def export_all() -> None:
     print("  JSON 익스포트 시작...")
@@ -211,9 +265,10 @@ def export_all() -> None:
     export_korean_players(con, s3)
     export_leaderboard(con, s3)
     export_batted_balls(con, s3)
+    export_pitcher_leaderboard(con, s3)
 
     con.close()
-    print("  JSON 익스포트 완료 (korean_players / leaderboard / hard_hit)")
+    print("  JSON 익스포트 완료 (korean_players / leaderboard / hard_hit / pitcher_leaderboard)")
 
 
 if __name__ == "__main__":

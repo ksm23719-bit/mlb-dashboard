@@ -2,7 +2,7 @@
 일일 ETL 파이프라인 (GitHub Actions cron 진입점)
 실행: python -m etl.etl_daily
 """
-from etl.statcast_load import load_recent
+from etl.statcast_load import load_smart
 from etl.build_crosswalk import build as build_crosswalk
 from etl.export_json import export_all
 from etl.r2_upload import upload
@@ -15,7 +15,7 @@ def run() -> None:
     # 1. Statcast 최근 7일 로드
     print("[1/4] Statcast 로드...")
     try:
-        load_recent(days=7)
+        load_smart()
     except Exception as e:
         errors.append(f"Statcast: {e}")
         print(f"  ERROR: {e}")

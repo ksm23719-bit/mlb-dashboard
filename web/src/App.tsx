@@ -1,29 +1,39 @@
 import { useState } from 'react'
 import Today from './pages/Today'
+import Leaderboard from './pages/Leaderboard'
+import HardHit from './pages/HardHit'
 import './index.css'
 
-type Page = 'today'
+type Page = 'today' | 'leaderboard' | 'hardhit'
 
 export default function App() {
   const [page, setPage] = useState<Page>('today')
+
+  function nav(p: Page) {
+    return (e: React.MouseEvent) => { e.preventDefault(); setPage(p) }
+  }
 
   return (
     <>
       <nav>
         <div className="inner">
           <span className="logo">⚾ MLB×KBO 대시보드</span>
-          <a
-            className={page === 'today' ? 'active' : ''}
-            href="#"
-            onClick={(e) => { e.preventDefault(); setPage('today') }}
-          >
-            오늘의 한국 선수
+          <a className={page === 'today' ? 'active' : ''} href="#" onClick={nav('today')}>
+            한국 선수
+          </a>
+          <a className={page === 'leaderboard' ? 'active' : ''} href="#" onClick={nav('leaderboard')}>
+            타자 리더보드
+          </a>
+          <a className={page === 'hardhit' ? 'active' : ''} href="#" onClick={nav('hardhit')}>
+            강타구 스크리너
           </a>
         </div>
       </nav>
 
       <div className="container">
         {page === 'today' && <Today />}
+        {page === 'leaderboard' && <Leaderboard />}
+        {page === 'hardhit' && <HardHit />}
       </div>
     </>
   )

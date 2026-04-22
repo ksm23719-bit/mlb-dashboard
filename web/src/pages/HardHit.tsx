@@ -3,6 +3,8 @@ import { fetchJSON } from '../db'
 
 interface Ball {
   mlb_id: number
+  batter_name: string
+  name_kr: string
   game_date: string
   events: string
   launch_speed: number
@@ -91,6 +93,7 @@ export default function HardHit() {
             <thead>
               <tr>
                 <th>#</th>
+                <th>타자</th>
                 <th>날짜</th>
                 <th>결과</th>
                 <th>타구속도</th>
@@ -108,6 +111,10 @@ export default function HardHit() {
                 return (
                   <tr key={i} style={isKorean ? { background: '#1a2744' } : undefined}>
                     <td style={{ color: '#8b949e' }}>{i + 1}</td>
+                    <td>
+                      <span style={{ fontWeight: isKorean ? 600 : 400 }}>{b.batter_name}</span>
+                      {b.name_kr && <span style={{ color: '#58a6ff', fontSize: '0.75rem', marginLeft: 4 }}>{b.name_kr}</span>}
+                    </td>
                     <td>{b.game_date}</td>
                     <td><span className={`badge ${cls}`}>{label}</span></td>
                     <td style={{ fontWeight: 700, color: '#58a6ff' }}>{b.launch_speed} mph</td>

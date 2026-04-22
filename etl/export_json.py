@@ -3,6 +3,7 @@ DuckDB → JSON 파일 생성 → R2 업로드
 """
 import json
 import boto3
+import requests
 from botocore.config import Config
 from datetime import date
 import duckdb
@@ -10,6 +11,25 @@ from etl.config import (
     DB_PATH, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
     R2_ENDPOINT, R2_BUCKET,
 )
+
+
+def fetch_player_names(mlb_ids: list[int]) -> dict[int, str]:
+    """MLB Stats API로 선수 ID → 이름 매핑 (최대 500명 배치)"""
+    if not mlb_ids:
+        return {}
+    names: dict[int, str] = {}
+    batch_size = 200
+    for i in range(0, len(mlb_ids), batch_size):
+        batch = mlb_ids[i:i + batch_size]
+        ids_str = ",".join(str(x) for x in batch)
+        resp = requests.get(
+            "https://statsapi.mlb.com/api/v1/people",
+            params={"personIds": ids_str, "fields": "people,id,fullName"},
+            timeout=15,
+        )
+        for p in resp.json().get("people", []):
+            names[p["id"]] = p["fullName"]
+    return names
 
 KOREAN_PLAYERS = [
     {"mlb_id": 673490, "name_kr": "김하성", "name_en": "Ha-Seong Kim", "pos": "SS"},
@@ -116,18 +136,20 @@ def export_leaderboard(con: duckdb.DuckDBPyConnection, s3) -> None:
             "avg_ev", "max_ev", "avg_la", "xwoba", "xba"]
     players = [dict(zip(cols, r)) for r in rows]
 
-    # 선수 이름 매핑 (player_name은 투수명이므로 별도 조회)
-    # batter ID → 투수로서 등장한 이름은 없으므로 MLB API 대신 crosswalk 활용
-    # crosswalk에 없는 선수는 ID만 표시 (프론트에서 API로 보완)
+    # MLB Stats API로 선수 이름 일괄 조회
+    all_ids = [p["mlb_id"] for p in players]
+    name_map = fetch_player_names(all_ids)
+    print(f"    이름 조회 완료: {len(name_map)}명")
+
+    # 한국 선수 한글 이름 매핑
     cw_rows = con.execute(
         "SELECT mlb_id, name_en, name_kr FROM player_crosswalk"
     ).fetchall()
     cw = {r[0]: {"name_en": r[1], "name_kr": r[2]} for r in cw_rows}
 
     for p in players:
-        info = cw.get(p["mlb_id"], {})
-        p["name_en"] = info.get("name_en", "")
-        p["name_kr"] = info.get("name_kr", "")
+        p["name_en"] = name_map.get(p["mlb_id"], f"ID:{p['mlb_id']}")
+        p["name_kr"] = cw.get(p["mlb_id"], {}).get("name_kr", "")
         p["avg"] = round(p["hits"] / p["pa"], 3) if p["pa"] > 0 else None
 
     _upload_json(s3, "data/leaderboard.json", {
@@ -162,11 +184,21 @@ def export_batted_balls(con: duckdb.DuckDBPyConnection, s3) -> None:
 
     cols = ["mlb_id", "game_date", "events", "launch_speed", "launch_angle",
             "xwoba", "distance", "bb_type", "home_team", "away_team", "pitcher"]
+    balls = [dict(zip(cols, r)) for r in rows]
+
+    # 타자 이름 조회
+    unique_ids = list({b["mlb_id"] for b in balls})
+    name_map = fetch_player_names(unique_ids)
+    cw_rows = con.execute("SELECT mlb_id, name_en, name_kr FROM player_crosswalk").fetchall()
+    cw = {r[0]: r[2] for r in cw_rows}
+    for b in balls:
+        b["batter_name"] = name_map.get(b["mlb_id"], f"ID:{b['mlb_id']}")
+        b["name_kr"] = cw.get(b["mlb_id"], "")
 
     _upload_json(s3, "data/hard_hit.json", {
         "updated_at": str(date.today()), "date_range": dr,
         "description": "타구속도 95mph 이상 타구",
-        "balls": [dict(zip(cols, r)) for r in rows],
+        "balls": balls,
     })
 
 

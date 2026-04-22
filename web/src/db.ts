@@ -10,19 +10,14 @@ export async function getDB(
 ): Promise<duckdb.AsyncDuckDB> {
   if (_db) return _db
 
-  const JSDELIVR = `https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/dist/`
-  const bundle = await duckdb.selectBundle({
-    mvp: {
-      mainModule: JSDELIVR + 'duckdb-mvp.wasm',
-      mainWorker: JSDELIVR + 'duckdb-browser-mvp.worker.js',
-    },
-    eh: {
-      mainModule: JSDELIVR + 'duckdb-eh.wasm',
-      mainWorker: JSDELIVR + 'duckdb-browser-eh.worker.js',
-    },
-  })
+  // jsdelivr에서 고정 버전으로 mvp 번들만 사용 (COEP 없이도 동작)
+  const JSDELIVR = `https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/dist/`
+  const bundle = {
+    mainModule: JSDELIVR + 'duckdb-mvp.wasm',
+    mainWorker: JSDELIVR + 'duckdb-browser-mvp.worker.js',
+  }
 
-  const worker = await duckdb.createWorker(bundle.mainWorker!)
+  const worker = await duckdb.createWorker(bundle.mainWorker)
   const logger = new duckdb.ConsoleLogger()
   _db = new duckdb.AsyncDuckDB(logger, worker)
   await _db.instantiate(bundle.mainModule)
